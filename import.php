@@ -13,10 +13,8 @@ if (!$conn) {
     die("Connection failed: " . mysqli_connect_error());
 }
 
-$sql = file_get_contents('travelmate.sql');
-if ($conn->multi_query($sql)) {
-    echo "Database imported successfully!";
-} else {
-    echo "Error: " . $conn->error;
+$result = $conn->query("SHOW TABLES");
+while($row = $result->fetch_array()) {
+    echo $row[0] . "<br>";
 }
 ?>
