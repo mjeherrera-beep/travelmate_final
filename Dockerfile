@@ -1,11 +1,11 @@
-FROM php:8.2-apache
+FROM php:8.2-cli
 
-RUN docker-php-ext-install mysqli && \
-    a2dismod mpm_event && \
-    a2enmod mpm_prefork rewrite
+RUN docker-php-ext-install mysqli
 
-COPY . /var/www/html/
+COPY . /app
 
-RUN chown -R www-data:www-data /var/www/html
+WORKDIR /app
 
 EXPOSE 80
+
+CMD ["php", "-S", "0.0.0.0:80", "-t", "."]
