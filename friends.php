@@ -35,6 +35,16 @@ $user_query = "SELECT * FROM users WHERE id = $current_user_id";
 $user_result = mysqli_query($conn, $user_query);
 $current_user = mysqli_fetch_assoc($user_result);
 
+// Function to get profile picture URL with fallback
+function getProfilePicUrl($profile_pic, $full_name, $size = 96) {
+    if (!empty($profile_pic) && $profile_pic != 'default.jpg' && file_exists('uploads/profiles/' . $profile_pic)) {
+        return 'uploads/profiles/' . $profile_pic;
+    } else {
+        $name = urlencode($full_name);
+        return "https://ui-avatars.com/api/?background=f39c12&color=fff&rounded=true&size=$size&bold=true&name=$name";
+    }
+}
+
 // Handle friend request actions
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['action']) && isset($_POST['friend_id'])) {
@@ -123,36 +133,26 @@ $friends_query = "SELECT u.*,
 $friends = mysqli_query($conn, $friends_query);
 $friends_count = mysqli_num_rows($friends);
 
-// Get suggestions
-$suggestions_query = "SELECT u.*,
-                     (SELECT COUNT(*) FROM friends_followers 
-                      WHERE follower_id = u.id AND status = 'accepted') as mutual_count
+// Get suggestions (all users except current)
+$suggestions_query = "SELECT u.*, 0 as mutual_count
                      FROM users u
                      WHERE u.id != $current_user_id
-                     AND u.id NOT IN (
-                         SELECT following_id FROM friends_followers 
-                         WHERE follower_id = $current_user_id
-                     )
-                     AND u.id NOT IN (
-                         SELECT follower_id FROM friends_followers 
-                         WHERE following_id = $current_user_id
-                     )
-                     ORDER BY RAND()
                      LIMIT 20";
 $suggestions = mysqli_query($conn, $suggestions_query);
+$suggestions_count = mysqli_num_rows($suggestions);
 
 // Get birthday friends
 $birthdays_query = "SELECT u.* 
                    FROM users u
                    JOIN friends_followers f ON u.id = f.following_id
                    WHERE f.follower_id = $current_user_id AND f.status = 'accepted'
-                   AND MONTH(u.birthdate) = MONTH(CURDATE())
+                   AND MONTH(u.birthdate) = MONTH(CURDATE()) AND u.birthdate IS NOT NULL
                    UNION
                    SELECT u.*
                    FROM users u
                    JOIN friends_followers f ON u.id = f.follower_id
                    WHERE f.following_id = $current_user_id AND f.status = 'accepted'
-                   AND MONTH(u.birthdate) = MONTH(CURDATE())
+                   AND MONTH(u.birthdate) = MONTH(CURDATE()) AND u.birthdate IS NOT NULL
                    ORDER BY DAY(birthdate) ASC";
 $birthdays = mysqli_query($conn, $birthdays_query);
 $birthdays_count = mysqli_num_rows($birthdays);
@@ -182,7 +182,6 @@ $birthdays_count = mysqli_num_rows($birthdays);
             min-height: 100vh;
         }
 
-               /* Navbar - Consistent across ALL pages */
         .navbar {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
@@ -292,14 +291,12 @@ $birthdays_count = mysqli_num_rows($birthdays);
             border-color: #e67e22;
         }
 
-        /* Friends Container */
         .friends-container {
             max-width: 1280px;
             margin: 0 auto;
             padding: 0 24px;
         }
 
-        /* Header Section */
         .friends-header {
             background: white;
             border-radius: 24px;
@@ -326,7 +323,6 @@ $birthdays_count = mysqli_num_rows($birthdays);
             font-size: 14px;
         }
 
-        /* Stats Cards */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -378,7 +374,6 @@ $birthdays_count = mysqli_num_rows($birthdays);
             margin-top: 4px;
         }
 
-        /* Tabs */
         .friends-tabs {
             background: white;
             padding: 8px;
@@ -437,7 +432,6 @@ $birthdays_count = mysqli_num_rows($birthdays);
             color: #f39c12;
         }
 
-        /* Content Panels */
         .tab-panel {
             display: none;
             animation: fadeSlide 0.3s ease;
@@ -452,7 +446,6 @@ $birthdays_count = mysqli_num_rows($birthdays);
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Request Cards */
         .request-card {
             background: white;
             padding: 20px;
@@ -484,12 +477,8 @@ $birthdays_count = mysqli_num_rows($birthdays);
             border-radius: 50%;
             object-fit: cover;
             cursor: pointer;
-            transition: all 0.3s;
             border: 2px solid #f39c12;
-        }
-
-        .request-avatar:hover {
-            transform: scale(1.05);
+            transition: none;
         }
 
         .request-details h3 {
@@ -554,14 +543,12 @@ $birthdays_count = mysqli_num_rows($birthdays);
             transform: translateY(-2px);
         }
 
-        /* Friends List Container - Horizontal Layout */
         .friends-list-container {
             display: flex;
             flex-direction: column;
             gap: 12px;
         }
 
-        /* Friend Row - Horizontal layout */
         .friend-row {
             display: flex;
             align-items: center;
@@ -580,7 +567,6 @@ $birthdays_count = mysqli_num_rows($birthdays);
             border-color: #f39c12;
         }
 
-        /* Friend Avatar - List style */
         .friend-avatar-list {
             width: 56px;
             height: 56px;
@@ -588,9 +574,9 @@ $birthdays_count = mysqli_num_rows($birthdays);
             object-fit: cover;
             border: 2px solid #f39c12;
             flex-shrink: 0;
+            transition: none;
         }
 
-        /* Friend Details */
         .friend-details {
             flex: 1;
         }
@@ -617,7 +603,6 @@ $birthdays_count = mysqli_num_rows($birthdays);
             margin-right: 4px;
         }
 
-        /* Friend Actions */
         .friend-actions-list {
             display: flex;
             gap: 10px;
@@ -656,7 +641,6 @@ $birthdays_count = mysqli_num_rows($birthdays);
             transform: translateY(-2px);
         }
 
-        /* Search Bar */
         .search-bar {
             background: white;
             padding: 14px 24px;
@@ -688,7 +672,97 @@ $birthdays_count = mysqli_num_rows($birthdays);
             font-family: 'Plus Jakarta Sans', sans-serif;
         }
 
-        /* Empty States */
+        /* Suggestions Grid - FIXED: No avatar movement on hover */
+        .suggestions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 28px;
+        }
+
+        .suggestion-card {
+            background: white;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+            border: 1px solid #e8e8e8;
+            border-radius: 24px;
+            position: relative;
+        }
+
+        .suggestion-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+        }
+
+        .suggestion-cover {
+            height: 110px;
+            position: relative;
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+        }
+
+        .suggestion-avatar {
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            border: 4px solid white;
+            position: absolute;
+            bottom: -48px;
+            left: 50%;
+            transform: translateX(-50%);
+            object-fit: cover;
+            background: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transition: none;
+        }
+
+        /* REMOVED: No scale effect on hover */
+        .suggestion-card:hover .suggestion-avatar {
+            transform: translateX(-50%);
+        }
+
+        .suggestion-info {
+            padding: 60px 20px 24px;
+            text-align: center;
+        }
+
+        .suggestion-name {
+            font-size: 18px;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 4px;
+        }
+
+        .suggestion-username {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 16px;
+        }
+
+        .suggestion-actions {
+            display: flex;
+            gap: 12px;
+            padding-top: 16px;
+            border-top: 1px solid #e8ecef;
+        }
+
+        .connect-btn {
+            flex: 1;
+            padding: 10px;
+            background: #f39c12;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+        }
+
+        .connect-btn:hover {
+            background: #e67e22;
+            transform: translateY(-2px);
+        }
+
         .empty-state {
             background: white;
             text-align: center;
@@ -721,7 +795,6 @@ $birthdays_count = mysqli_num_rows($birthdays);
             margin-bottom: 24px;
         }
 
-        /* Toast */
         .toast {
             position: fixed;
             bottom: 30px;
@@ -753,7 +826,7 @@ $birthdays_count = mysqli_num_rows($birthdays);
                 margin-bottom: 20px;
             }
             
-            .friends-grid {
+            .suggestions-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -776,7 +849,7 @@ $birthdays_count = mysqli_num_rows($birthdays);
     </style>
 </head>
 <body>
-   <nav class="navbar">
+<nav class="navbar">
     <div class="nav-container">
         <div class="logo">
             <i class="fas fa-compass logo-icon"></i>
@@ -804,83 +877,80 @@ $birthdays_count = mysqli_num_rows($birthdays);
     </div>
 </nav>
 
-    <div class="friends-container">
-        <!-- Header -->
-        <div class="friends-header">
-            <h1><i class="fas fa-globe-asia"></i> Travel Circle</h1>
-            <p>Your adventure community — connect, share, explore together</p>
-        </div>
+<div class="friends-container">
+    <div class="friends-header">
+        <h1><i class="fas fa-globe-asia"></i> Travel Circle</h1>
+        <p>Your adventure community — connect, share, explore together</p>
+    </div>
 
-        <!-- Stats Cards -->
-        <div class="stats-grid">
-            <div class="stat-card" onclick="switchTab('all')">
-                <div class="stat-icon companions">
-                    <i class="fas fa-user-friends"></i>
-                </div>
-                <div class="stat-info">
-                    <h3><?php echo $friends_count; ?></h3>
-                    <p>Travel Buddies</p>
-                </div>
+    <div class="stats-grid">
+        <div class="stat-card" onclick="switchTab('all')">
+            <div class="stat-icon companions">
+                <i class="fas fa-user-friends"></i>
             </div>
-            <div class="stat-card" onclick="switchTab('requests')">
-                <div class="stat-icon requests">
-                    <i class="fas fa-handshake"></i>
-                </div>
-                <div class="stat-info">
-                    <h3><?php echo $friend_requests_count; ?></h3>
-                    <p>Pending Invites</p>
-                </div>
-            </div>
-            <div class="stat-card" onclick="switchTab('sent')">
-                <div class="stat-icon sent">
-                    <i class="fas fa-paper-plane"></i>
-                </div>
-                <div class="stat-info">
-                    <h3><?php echo mysqli_num_rows($sent_requests); ?></h3>
-                    <p>Sent Invites</p>
-                </div>
-            </div>
-            <div class="stat-card" onclick="switchTab('birthdays')">
-                <div class="stat-icon birthdays">
-                    <i class="fas fa-birthday-cake"></i>
-                </div>
-                <div class="stat-info">
-                    <h3><?php echo $birthdays_count; ?></h3>
-                    <p>Celebrations</p>
-                </div>
+            <div class="stat-info">
+                <h3><?php echo $friends_count; ?></h3>
+                <p>Travel Buddies</p>
             </div>
         </div>
-
-        <!-- Tabs -->
-        <div class="friends-tabs">
-            <div class="tabs-container">
-                <button class="tab-btn active" onclick="switchTab('all')">
-                    All Buddies <span class="tab-badge"><?php echo $friends_count; ?></span>
-                </button>
-                <button class="tab-btn" onclick="switchTab('requests')">
-                    Requests 
-                    <?php if ($friend_requests_count > 0): ?>
-                        <span class="tab-badge" style="background:#e74c3c; color:white;"><?php echo $friend_requests_count; ?></span>
-                    <?php else: ?>
-                        <span class="tab-badge"><?php echo $friend_requests_count; ?></span>
-                    <?php endif; ?>
-                </button>
-                <button class="tab-btn" onclick="switchTab('sent')">
-                    Sent
-                </button>
-                <button class="tab-btn" onclick="switchTab('suggestions')">
-                    Discover
-                </button>
-                <button class="tab-btn" onclick="switchTab('birthdays')">
-                    Celebrations
-                    <?php if ($birthdays_count > 0): ?>
-                        <span class="tab-badge" style="background:#1abc9c; color:white;"><?php echo $birthdays_count; ?></span>
-                    <?php endif; ?>
-                </button>
+        <div class="stat-card" onclick="switchTab('requests')">
+            <div class="stat-icon requests">
+                <i class="fas fa-handshake"></i>
+            </div>
+            <div class="stat-info">
+                <h3><?php echo $friend_requests_count; ?></h3>
+                <p>Pending Invites</p>
             </div>
         </div>
+        <div class="stat-card" onclick="switchTab('sent')">
+            <div class="stat-icon sent">
+                <i class="fas fa-paper-plane"></i>
+            </div>
+            <div class="stat-info">
+                <h3><?php echo mysqli_num_rows($sent_requests); ?></h3>
+                <p>Sent Invites</p>
+            </div>
+        </div>
+        <div class="stat-card" onclick="switchTab('birthdays')">
+            <div class="stat-icon birthdays">
+                <i class="fas fa-birthday-cake"></i>
+            </div>
+            <div class="stat-info">
+                <h3><?php echo $birthdays_count; ?></h3>
+                <p>Celebrations</p>
+            </div>
+        </div>
+    </div>
 
-     <!-- All Friends Panel -->
+    <div class="friends-tabs">
+        <div class="tabs-container">
+            <button class="tab-btn active" onclick="switchTab('all')">
+                All Buddies <span class="tab-badge"><?php echo $friends_count; ?></span>
+            </button>
+            <button class="tab-btn" onclick="switchTab('requests')">
+                Requests 
+                <?php if ($friend_requests_count > 0): ?>
+                    <span class="tab-badge" style="background:#e74c3c; color:white;"><?php echo $friend_requests_count; ?></span>
+                <?php else: ?>
+                    <span class="tab-badge"><?php echo $friend_requests_count; ?></span>
+                <?php endif; ?>
+            </button>
+            <button class="tab-btn" onclick="switchTab('sent')">
+                Sent
+            </button>
+            <button class="tab-btn" onclick="switchTab('suggestions')">
+                Discover
+            </button>
+            <button class="tab-btn" onclick="switchTab('birthdays')">
+                Celebrations
+                <?php if ($birthdays_count > 0): ?>
+                    <span class="tab-badge" style="background:#1abc9c; color:white;"><?php echo $birthdays_count; ?></span>
+                <?php endif; ?>
+            </button>
+        </div>
+    </div>
+
+    <!-- All Friends Panel -->
     <div id="allFriendsPanel" class="tab-panel active">
         <div class="search-bar">
             <i class="fas fa-search"></i>
@@ -899,16 +969,7 @@ $birthdays_count = mysqli_num_rows($birthdays);
             <?php else: ?>
                 <?php while ($friend = mysqli_fetch_assoc($friends)): ?>
                     <div class="friend-row" data-name="<?php echo strtolower($friend['full_name'] . ' ' . $friend['username']); ?>" onclick="viewProfile(<?php echo $friend['id']; ?>)">
-                        <?php
-                        $friend_pic = $friend['profile_pic'];
-                        if (!empty($friend_pic) && $friend_pic != 'default.jpg' && file_exists('uploads/profiles/' . $friend_pic)) {
-                            $friend_avatar_url = 'uploads/profiles/' . $friend_pic;
-                        } else {
-                            $name = urlencode($friend['full_name']);
-                            $friend_avatar_url = "https://ui-avatars.com/api/?background=f39c12&color=fff&rounded=true&size=48&bold=true&name=$name";
-                        }
-                        ?>
-                        <img src="<?php echo $friend_avatar_url; ?>" class="friend-avatar-list" alt="Avatar">
+                        <img src="<?php echo getProfilePicUrl($friend['profile_pic'], $friend['full_name'], 56); ?>" class="friend-avatar-list" alt="Avatar">
                         <div class="friend-details">
                             <div class="friend-name-list"><?php echo htmlspecialchars($friend['full_name']); ?></div>
                             <div class="friend-username-list">@<?php echo htmlspecialchars($friend['username']); ?></div>
@@ -923,7 +984,7 @@ $birthdays_count = mysqli_num_rows($birthdays);
                                 <i class="fas fa-comment"></i> Message
                             </button>
                             <button class="friend-action-btn unfriend" onclick="event.stopPropagation(); unfriend(<?php echo $friend['id']; ?>, '<?php echo addslashes($friend['full_name']); ?>')">
-                                <i class="fas fa-user"></i> Remove
+                                <i class="fas fa-user-minus"></i> Remove
                             </button>
                         </div>
                     </div>
@@ -932,233 +993,245 @@ $birthdays_count = mysqli_num_rows($birthdays);
         </div>
     </div>
 
-        <!-- Friend Requests Panel -->
-        <div id="requestsPanel" class="tab-panel">
-            <div id="requestsList">
-                <?php if ($friend_requests_count == 0): ?>
-                    <div class="empty-state">
-                        <div class="empty-icon">
-                            <i class="fas fa-bell-slash"></i>
-                        </div>
-                        <div class="empty-title">No pending invites</div>
-                        <div class="empty-text">When someone wants to connect, you'll see it here.</div>
+    <!-- Friend Requests Panel -->
+    <div id="requestsPanel" class="tab-panel">
+        <div id="requestsList">
+            <?php if ($friend_requests_count == 0): ?>
+                <div class="empty-state">
+                    <div class="empty-icon">
+                        <i class="fas fa-bell-slash"></i>
                     </div>
-                <?php else: ?>
-                    <?php while ($request = mysqli_fetch_assoc($friend_requests)): ?>
-                        <div class="request-card" id="request_<?php echo $request['id']; ?>">
-                            <div class="request-info">
-                                <?php
-                                $req_pic = $request['profile_pic'];
-                                if (!empty($req_pic) && $req_pic != 'default.jpg' && file_exists('uploads/profiles/' . $req_pic)) {
-                                    $req_avatar_url = 'uploads/profiles/' . $req_pic;
-                                } else {
-                                    $name = urlencode($request['full_name']);
-                                    $req_avatar_url = "https://ui-avatars.com/api/?background=f39c12&color=fff&rounded=true&size=72&bold=true&name=$name";
-                                }
-                                ?>
-                                <img src="<?php echo $req_avatar_url; ?>" class="request-avatar" 
-                                     onclick="viewProfile(<?php echo $request['id']; ?>)">
-                                <div class="request-details">
-                                    <h3 onclick="viewProfile(<?php echo $request['id']; ?>)">
-                                        <?php echo htmlspecialchars($request['full_name']); ?>
-                                    </h3>
-                                    <div class="mutual-friends">
-                                        <i class="fas fa-user-friends"></i> 
-                                        <?php echo $request['mutual_count']; ?> mutual connections
-                                    </div>
-                                    <div style="font-size: 12px; color: #7f8c8d; margin-top: 6px;">
-                                        <i class="far fa-clock"></i> Requested <?php echo date('M j, Y', strtotime($request['request_date'])); ?>
-                                    </div>
+                    <div class="empty-title">No pending invites</div>
+                    <div class="empty-text">When someone wants to connect, you'll see it here.</div>
+                </div>
+            <?php else: ?>
+                <?php while ($request = mysqli_fetch_assoc($friend_requests)): ?>
+                    <div class="request-card" id="request_<?php echo $request['id']; ?>">
+                        <div class="request-info">
+                            <img src="<?php echo getProfilePicUrl($request['profile_pic'], $request['full_name'], 60); ?>" class="request-avatar" 
+                                 onclick="viewProfile(<?php echo $request['id']; ?>)">
+                            <div class="request-details">
+                                <h3 onclick="viewProfile(<?php echo $request['id']; ?>)">
+                                    <?php echo htmlspecialchars($request['full_name']); ?>
+                                </h3>
+                                <div class="mutual-friends">
+                                    <i class="fas fa-user-friends"></i> 
+                                    <?php echo $request['mutual_count']; ?> mutual connections
+                                </div>
+                                <div style="font-size: 12px; color: #7f8c8d; margin-top: 6px;">
+                                    <i class="far fa-clock"></i> Requested <?php echo date('M j, Y', strtotime($request['request_date'])); ?>
                                 </div>
                             </div>
-                            <div class="request-actions">
-                                <button class="btn-accept" onclick="handleFriendRequest(<?php echo $request['id']; ?>, 'accept')">
-                                    <i class="fas fa-check"></i> Accept
-                                </button>
-                                <button class="btn-decline" onclick="handleFriendRequest(<?php echo $request['id']; ?>, 'decline')">
-                                    <i class="fas fa-times"></i> Decline
-                                </button>
-                            </div>
                         </div>
-                    <?php endwhile; ?>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <!-- Sent Requests Panel -->
-        <div id="sentPanel" class="tab-panel">
-            <div id="sentList">
-                <?php if (mysqli_num_rows($sent_requests) == 0): ?>
-                    <div class="empty-state">
-                        <div class="empty-icon">
-                            <i class="fas fa-paper-plane"></i>
+                        <div class="request-actions">
+                            <button class="btn-accept" onclick="handleFriendRequest(<?php echo $request['id']; ?>, 'accept')">
+                                <i class="fas fa-check"></i> Accept
+                            </button>
+                            <button class="btn-decline" onclick="handleFriendRequest(<?php echo $request['id']; ?>, 'decline')">
+                                <i class="fas fa-times"></i> Decline
+                            </button>
                         </div>
-                        <div class="empty-title">No outgoing invites</div>
-                        <div class="empty-text">Invites you send will appear here.</div>
                     </div>
-                <?php else: ?>
-                    <?php while ($sent = mysqli_fetch_assoc($sent_requests)): ?>
-                        <div class="request-card" id="sent_<?php echo $sent['id']; ?>">
-                            <div class="request-info">
-                                <?php
-                                $sent_pic = $sent['profile_pic'];
-                                if (!empty($sent_pic) && $sent_pic != 'default.jpg' && file_exists('uploads/profiles/' . $sent_pic)) {
-                                    $sent_avatar_url = 'uploads/profiles/' . $sent_pic;
-                                } else {
-                                    $name = urlencode($sent['full_name']);
-                                    $sent_avatar_url = "https://ui-avatars.com/api/?background=f39c12&color=fff&rounded=true&size=72&bold=true&name=$name";
-                                }
-                                ?>
-                                <img src="<?php echo $sent_avatar_url; ?>" class="request-avatar" 
-                                     onclick="viewProfile(<?php echo $sent['id']; ?>)">
-                                <div class="request-details">
-                                    <h3 onclick="viewProfile(<?php echo $sent['id']; ?>)">
-                                        <?php echo htmlspecialchars($sent['full_name']); ?>
-                                    </h3>
-                                    <div style="font-size: 12px; color: #7f8c8d; margin-top: 6px;">
-                                        <i class="far fa-paper-plane"></i> Sent <?php echo date('M j, Y', strtotime($sent['request_date'])); ?>
-                                    </div>
+                <?php endwhile; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- Sent Requests Panel -->
+    <div id="sentPanel" class="tab-panel">
+        <div id="sentList">
+            <?php if (mysqli_num_rows($sent_requests) == 0): ?>
+                <div class="empty-state">
+                    <div class="empty-icon">
+                        <i class="fas fa-paper-plane"></i>
+                    </div>
+                    <div class="empty-title">No outgoing invites</div>
+                    <div class="empty-text">Invites you send will appear here.</div>
+                </div>
+            <?php else: ?>
+                <?php while ($sent = mysqli_fetch_assoc($sent_requests)): ?>
+                    <div class="request-card" id="sent_<?php echo $sent['id']; ?>">
+                        <div class="request-info">
+                            <img src="<?php echo getProfilePicUrl($sent['profile_pic'], $sent['full_name'], 60); ?>" class="request-avatar" 
+                                 onclick="viewProfile(<?php echo $sent['id']; ?>)">
+                            <div class="request-details">
+                                <h3 onclick="viewProfile(<?php echo $sent['id']; ?>)">
+                                    <?php echo htmlspecialchars($sent['full_name']); ?>
+                                </h3>
+                                <div style="font-size: 12px; color: #7f8c8d; margin-top: 6px;">
+                                    <i class="far fa-paper-plane"></i> Sent <?php echo date('M j, Y', strtotime($sent['request_date'])); ?>
                                 </div>
                             </div>
-                            <div class="request-actions">
-                                <button class="btn-decline" onclick="cancelRequest(<?php echo $sent['id']; ?>, '<?php echo addslashes($sent['full_name']); ?>')">
-                                    <i class="fas fa-times"></i> Cancel Invite
-                                </button>
-                            </div>
                         </div>
-                    <?php endwhile; ?>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <!-- Suggestions Panel -->
-        <div id="suggestionsPanel" class="tab-panel">
-            <div id="suggestionsList" class="friends-grid">
-                <?php if (mysqli_num_rows($suggestions) == 0): ?>
-                    <div class="empty-state" style="grid-column: 1/-1;">
-                        <div class="empty-icon">
-                            <i class="fas fa-users"></i>
+                        <div class="request-actions">
+                            <button class="btn-decline" onclick="cancelRequest(<?php echo $sent['id']; ?>, '<?php echo addslashes($sent['full_name']); ?>')">
+                                <i class="fas fa-times"></i> Cancel Invite
+                            </button>
                         </div>
-                        <div class="empty-title">No suggestions right now</div>
-                        <div class="empty-text">Check back later for more travel buddies!</div>
                     </div>
-                <?php else: ?>
+                <?php endwhile; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- Suggestions Panel -->
+    <div id="suggestionsPanel" class="tab-panel">
+        <div id="suggestionsList">
+            <?php if ($suggestions_count == 0): ?>
+                <div class="empty-state">
+                    <div class="empty-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="empty-title">No suggestions right now</div>
+                    <div class="empty-text">Check back later for more travel buddies!</div>
+                    <div style="margin-top: 16px; padding: 12px; background: #fef9f0; border-radius: 12px; font-size: 12px;">
+                        <i class="fas fa-info-circle"></i> No other users found. 
+                        <a href="register.php" style="color:#f39c12; display:inline-block; margin-left:8px;">Create a new account</a>
+                    </div>
+                </div>
+            <?php else: ?>
+                <div class="suggestions-grid">
                     <?php while ($suggestion = mysqli_fetch_assoc($suggestions)): ?>
-                        <div class="friend-card">
-                            <div class="friend-cover"></div>
-                            <?php
-                            $sug_pic = $suggestion['profile_pic'];
-                            if (!empty($sug_pic) && $sug_pic != 'default.jpg' && file_exists('uploads/profiles/' . $sug_pic)) {
-                                $sug_avatar_url = 'uploads/profiles/' . $sug_pic;
-                            } else {
-                                $name = urlencode($suggestion['full_name']);
-                                $sug_avatar_url = "https://ui-avatars.com/api/?background=f39c12&color=fff&rounded=true&size=96&bold=true&name=$name";
-                            }
-                            ?>
-                            <img src="<?php echo $sug_avatar_url; ?>" class="friend-avatar-large" 
+                        <div class="suggestion-card">
+                            <div class="suggestion-cover"></div>
+                            <img src="<?php echo getProfilePicUrl($suggestion['profile_pic'], $suggestion['full_name'], 96); ?>" class="suggestion-avatar" 
                                  onclick="viewProfile(<?php echo $suggestion['id']; ?>)">
-                            <div class="friend-info">
-                                <div class="friend-name" onclick="viewProfile(<?php echo $suggestion['id']; ?>)">
+                            <div class="suggestion-info">
+                                <div class="suggestion-name" onclick="viewProfile(<?php echo $suggestion['id']; ?>)">
                                     <?php echo htmlspecialchars($suggestion['full_name']); ?>
                                 </div>
-                                <div class="friend-username">@<?php echo htmlspecialchars($suggestion['username']); ?></div>
-                                <?php if ($suggestion['mutual_count'] > 0): ?>
-                                    <div class="friend-mutual">
-                                        <i class="fas fa-user-friends"></i> <?php echo $suggestion['mutual_count']; ?> mutual friends
-                                    </div>
-                                <?php endif; ?>
-                                <div class="friend-actions">
-                                    <button class="friend-action-btn message" style="background:#f39c12; color:white;" 
-                                            onclick="sendFriendRequest(<?php echo $suggestion['id']; ?>, '<?php echo addslashes($suggestion['full_name']); ?>')">
+                                <div class="suggestion-username">@<?php echo htmlspecialchars($suggestion['username']); ?></div>
+                                <div class="suggestion-actions">
+                                    <button class="connect-btn" onclick="sendFriendRequest(<?php echo $suggestion['id']; ?>, '<?php echo addslashes($suggestion['full_name']); ?>')">
                                         <i class="fas fa-user-plus"></i> Connect
                                     </button>
                                 </div>
                             </div>
                         </div>
                     <?php endwhile; ?>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <!-- Birthdays Panel -->
-        <div id="birthdaysPanel" class="tab-panel">
-            <div id="birthdaysList">
-                <?php if ($birthdays_count == 0): ?>
-                    <div class="empty-state">
-                        <div class="empty-icon">
-                            <i class="fas fa-birthday-cake"></i>
-                        </div>
-                        <div class="empty-title">No celebrations this month</div>
-                        <div class="empty-text">Check back next month for birthday wishes!</div>
-                    </div>
-                <?php else: ?>
-                    <div class="friends-grid">
-                        <?php while ($birthday = mysqli_fetch_assoc($birthdays)): ?>
-                            <div class="friend-card">
-                                <div class="friend-cover" style="background: linear-gradient(135deg, #f1c40f, #f39c12);"></div>
-                                <?php
-                                $birth_pic = $birthday['profile_pic'];
-                                if (!empty($birth_pic) && $birth_pic != 'default.jpg' && file_exists('uploads/profiles/' . $birth_pic)) {
-                                    $birth_avatar_url = 'uploads/profiles/' . $birth_pic;
-                                } else {
-                                    $name = urlencode($birthday['full_name']);
-                                    $birth_avatar_url = "https://ui-avatars.com/api/?background=f39c12&color=fff&rounded=true&size=96&bold=true&name=$name";
-                                }
-                                ?>
-                                <img src="<?php echo $birth_avatar_url; ?>" class="friend-avatar-large" 
-                                     onclick="viewProfile(<?php echo $birthday['id']; ?>)">
-                                <div class="friend-info">
-                                    <div class="friend-name" onclick="viewProfile(<?php echo $birthday['id']; ?>)">
-                                        <?php echo htmlspecialchars($birthday['full_name']); ?>
-                                    </div>
-                                    <div class="friend-username">@<?php echo htmlspecialchars($birthday['username']); ?></div>
-                                    <div class="friend-mutual" style="background:#fef9e8; color:#f1c40f;">
-                                        <i class="fas fa-birthday-cake"></i> 
-                                        <?php echo date('F j', strtotime($birthday['birthdate'])); ?>
-                                    </div>
-                                    <div class="friend-actions">
-                                        <button class="friend-action-btn message" style="background:#f1c40f; color:#2c3e50;" onclick="messageFriend(<?php echo $birthday['id']; ?>)">
-                                            <i class="fas fa-gift"></i> Wish Happy Birthday
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endwhile; ?>
-                    </div>
-                <?php endif; ?>
-            </div>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 
-    <!-- Toast Notification -->
-    <div id="toast" class="toast"></div>
+    <!-- Birthdays Panel -->
+    <div id="birthdaysPanel" class="tab-panel">
+        <div id="birthdaysList">
+            <?php if ($birthdays_count == 0): ?>
+                <div class="empty-state">
+                    <div class="empty-icon">
+                        <i class="fas fa-birthday-cake"></i>
+                    </div>
+                    <div class="empty-title">No celebrations this month</div>
+                    <div class="empty-text">Check back next month for birthday wishes!</div>
+                </div>
+            <?php else: ?>
+                <div class="suggestions-grid">
+                    <?php while ($birthday = mysqli_fetch_assoc($birthdays)): ?>
+                        <div class="suggestion-card">
+                            <div class="suggestion-cover" style="background: linear-gradient(135deg, #f1c40f, #f39c12);"></div>
+                            <img src="<?php echo getProfilePicUrl($birthday['profile_pic'], $birthday['full_name'], 96); ?>" class="suggestion-avatar" 
+                                 onclick="viewProfile(<?php echo $birthday['id']; ?>)">
+                            <div class="suggestion-info">
+                                <div class="suggestion-name" onclick="viewProfile(<?php echo $birthday['id']; ?>)">
+                                    <?php echo htmlspecialchars($birthday['full_name']); ?>
+                                </div>
+                                <div class="suggestion-username">@<?php echo htmlspecialchars($birthday['username']); ?></div>
+                                <div class="suggestion-actions">
+                                    <button class="connect-btn" style="background:#f1c40f; color:#2c3e50;" onclick="messageFriend(<?php echo $birthday['id']; ?>)">
+                                        <i class="fas fa-gift"></i> Wish Happy Birthday
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endwhile; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
 
-    <script>
-        // Tab Switching
-        function switchTab(tabName) {
-            let clickedBtn = event.target.closest('.tab-btn');
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+<div id="toast" class="toast"></div>
+
+<script>
+    // Tab Switching
+    function switchTab(tabName) {
+        let clickedBtn = event.target.closest('.tab-btn');
+        
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        if (clickedBtn) {
             clickedBtn.classList.add('active');
-            
-            document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
-            
-            if (tabName === 'all') {
-                document.getElementById('allFriendsPanel').classList.add('active');
-            } else if (tabName === 'requests') {
-                document.getElementById('requestsPanel').classList.add('active');
-            } else if (tabName === 'sent') {
-                document.getElementById('sentPanel').classList.add('active');
-            } else if (tabName === 'suggestions') {
-                document.getElementById('suggestionsPanel').classList.add('active');
-            } else if (tabName === 'birthdays') {
-                document.getElementById('birthdaysPanel').classList.add('active');
-            }
         }
         
-        // Handle Friend Request
-        function handleFriendRequest(friendId, action) {
+        document.querySelectorAll('.tab-panel').forEach(panel => {
+            panel.classList.remove('active');
+        });
+        
+        if (tabName === 'all') {
+            document.getElementById('allFriendsPanel').classList.add('active');
+        } else if (tabName === 'requests') {
+            document.getElementById('requestsPanel').classList.add('active');
+        } else if (tabName === 'sent') {
+            document.getElementById('sentPanel').classList.add('active');
+        } else if (tabName === 'suggestions') {
+            document.getElementById('suggestionsPanel').classList.add('active');
+        } else if (tabName === 'birthdays') {
+            document.getElementById('birthdaysPanel').classList.add('active');
+        }
+    }
+    
+    function handleFriendRequest(friendId, action) {
+        const formData = new FormData();
+        formData.append('action', action === 'accept' ? 'accept_request' : 'decline_request');
+        formData.append('friend_id', friendId);
+        
+        fetch('friends.php', {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const requestDiv = document.getElementById(`request_${friendId}`);
+                if (requestDiv) {
+                    requestDiv.style.animation = 'fadeOut 0.3s ease';
+                    setTimeout(() => {
+                        requestDiv.remove();
+                        showToast(action === 'accept' ? 'Connection accepted!' : 'Request declined');
+                        setTimeout(() => location.reload(), 1000);
+                    }, 300);
+                }
+            }
+        });
+    }
+    
+    function sendFriendRequest(friendId, friendName) {
+        const formData = new FormData();
+        formData.append('action', 'send_request');
+        formData.append('friend_id', friendId);
+        
+        fetch('friends.php', {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast(`Invite sent to ${friendName}!`);
+                setTimeout(() => location.reload(), 1000);
+            }
+        });
+    }
+    
+    function cancelRequest(friendId, friendName) {
+        if (confirm(`Cancel invite to ${friendName}?`)) {
             const formData = new FormData();
-            formData.append('action', action === 'accept' ? 'accept_request' : 'decline_request');
+            formData.append('action', 'cancel_request');
             formData.append('friend_id', friendId);
             
             fetch('friends.php', {
@@ -1169,23 +1242,21 @@ $birthdays_count = mysqli_num_rows($birthdays);
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    const requestDiv = document.getElementById(`request_${friendId}`);
-                    if (requestDiv) {
-                        requestDiv.style.animation = 'fadeOut 0.3s ease';
-                        setTimeout(() => {
-                            requestDiv.remove();
-                            showToast(action === 'accept' ? 'Connection accepted!' : 'Request declined');
-                            setTimeout(() => location.reload(), 1000);
-                        }, 300);
+                    const sentDiv = document.getElementById(`sent_${friendId}`);
+                    if (sentDiv) {
+                        sentDiv.remove();
+                        showToast('Invite cancelled');
+                        setTimeout(() => location.reload(), 1000);
                     }
                 }
             });
         }
-        
-        // Send Friend Request
-        function sendFriendRequest(friendId, friendName) {
+    }
+    
+    function unfriend(friendId, friendName) {
+        if (confirm(`Remove ${friendName} from your travel circle?`)) {
             const formData = new FormData();
-            formData.append('action', 'send_request');
+            formData.append('action', 'unfriend');
             formData.append('friend_id', friendId);
             
             fetch('friends.php', {
@@ -1196,107 +1267,56 @@ $birthdays_count = mysqli_num_rows($birthdays);
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    showToast(`Invite sent to ${friendName}!`);
+                    showToast(`${friendName} removed`);
                     setTimeout(() => location.reload(), 1000);
                 }
             });
         }
+    }
+    
+    function viewProfile(userId) {
+        window.location.href = `profile.php?id=${userId}`;
+    }
+    
+    function messageFriend(friendId) {
+        showToast('Messaging feature coming soon!');
+    }
+    
+    function searchFriends() {
+        const searchTerm = document.getElementById('searchFriends').value.toLowerCase();
+        const friendRows = document.querySelectorAll('#friendsList .friend-row');
         
-        // Cancel Request
-        function cancelRequest(friendId, friendName) {
-            if (confirm(`Cancel invite to ${friendName}?`)) {
-                const formData = new FormData();
-                formData.append('action', 'cancel_request');
-                formData.append('friend_id', friendId);
-                
-                fetch('friends.php', {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        const sentDiv = document.getElementById(`sent_${friendId}`);
-                        if (sentDiv) {
-                            sentDiv.remove();
-                            showToast('Invite cancelled');
-                            setTimeout(() => location.reload(), 1000);
-                        }
-                    }
-                });
+        friendRows.forEach(row => {
+            const name = row.getAttribute('data-name') || '';
+            if (name.includes(searchTerm)) {
+                row.style.display = 'flex';
+            } else {
+                row.style.display = 'none';
             }
-        }
-        
-        // Unfriend
-        function unfriend(friendId, friendName) {
-            if (confirm(`Remove ${friendName} from your travel circle?`)) {
-                const formData = new FormData();
-                formData.append('action', 'unfriend');
-                formData.append('friend_id', friendId);
-                
-                fetch('friends.php', {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showToast(`${friendName} removed`);
-                        setTimeout(() => location.reload(), 1000);
-                    }
-                });
-            }
-        }
-        
-        // View Profile
-        function viewProfile(userId) {
-            window.location.href = `profile.php?id=${userId}`;
-        }
-        
-        // Message Friend
-        function messageFriend(friendId) {
-            showToast('Messaging feature coming soon!');
-        }
-        
-        // Search Friends
-        function searchFriends() {
-            const searchTerm = document.getElementById('searchFriends').value.toLowerCase();
-            const friendCards = document.querySelectorAll('#friendsList .friend-card');
-            
-            friendCards.forEach(card => {
-                const name = card.getAttribute('data-name') || '';
-                if (name.includes(searchTerm)) {
-                    card.style.display = '';
-                } else {
-                    card.style.display = 'none';
-                }
-            });
-        }
-        
-        // Show Toast
-        function showToast(message) {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.style.display = 'block';
+        });
+    }
+    
+    function showToast(message) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.style.display = 'block';
+        setTimeout(() => {
+            toast.style.opacity = '0';
             setTimeout(() => {
-                toast.style.opacity = '0';
-                setTimeout(() => {
-                    toast.style.display = 'none';
-                    toast.style.opacity = '1';
-                }, 300);
-            }, 3000);
+                toast.style.display = 'none';
+                toast.style.opacity = '1';
+            }, 300);
+        }, 3000);
+    }
+    
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(-20px); }
         }
-        
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes fadeOut {
-                from { opacity: 1; transform: translateX(0); }
-                to { opacity: 0; transform: translateX(-20px); }
-            }
-        `;
-        document.head.appendChild(style);
-    </script>
+    `;
+    document.head.appendChild(style);
+</script>
 </body>
 </html>
