@@ -13,8 +13,20 @@ if (!$conn) {
     die("Connection failed: " . mysqli_connect_error());
 }
 
+echo "Connected!<br>";
+
 $result = $conn->query("SHOW TABLES");
-while($row = $result->fetch_array()) {
-    echo $row[0] . "<br>";
+if ($result) {
+    $tables = [];
+    while($row = $result->fetch_array()) {
+        $tables[] = $row[0];
+    }
+    if (empty($tables)) {
+        echo "No tables found!";
+    } else {
+        echo "Tables: " . implode(", ", $tables);
+    }
+} else {
+    echo "Error: " . $conn->error;
 }
 ?>
