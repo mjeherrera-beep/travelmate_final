@@ -1,16 +1,15 @@
 <?php
-// Para sa Render, gamitin ang environment variables
-$host = getenv('MYSQL_HOST') ?: 'localhost';
-$user = getenv('MYSQL_USER') ?: 'root';
-$password = getenv('MYSQL_PASSWORD') ?: '';
-$database = getenv('MYSQL_DATABASE') ?: 'travelmate';
-$port = getenv('MYSQL_PORT') ?: '3306';
+// config.php – read database credentials from environment variables
+$db_host = getenv('DB_HOST');
+$db_user = getenv('DB_USER');
+$db_password = getenv('DB_PASSWORD');
+$db_name = getenv('DB_NAME');
 
-$conn = mysqli_connect($host, $user, $password, $database, $port);
+// Create connection
+$conn = new mysqli($db_host, $db_user, $db_password, $db_name);
 
-if (!$conn) {
-    die("Connection failed: " . mysqli_connect_error());
+// Check connection
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
 }
-
-date_default_timezone_set('Asia/Manila');
 ?>
